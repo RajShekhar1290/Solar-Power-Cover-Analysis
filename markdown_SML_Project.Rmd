@@ -1,0 +1,602 @@
+---
+title: "SML_Project"
+author: "Raj Shekhar"
+date: "28/04/2020"
+output: word_document
+---
+
+```{r echo=T, results='hide'}
+# setting working directory:
+setwd("/Users/raj/Desktop/Assignments/Machine Learning/Project/")
+# Loading the Solar Data set
+solar.data <- read.csv("data_project_deepsolar.csv")
+# To get the structre of Solar Data set
+str(solar.data) # 20736 observation of  81 variables
+str(table(solar.data$voting_2012_dem_win))
+
+solarinfo.data <- read.csv("data_project_deepsolar_info.csv")
+str(solarinfo.data) # 81 observation of  3 variables and all are factor:
+
+library(dlookr)
+
+#EDA
+library(ggplot2)
+library(ggthemes)
+
+#Solar count of target variable solar_system_count
+table(solar.data$solar_system_count)
+#high   low 
+#10900  9836 
+
+#Bar chart by frequency
+# solar_system_count distribution plot
+ggplot()+geom_bar(aes(solar.data[,1]),fill=c("#CCFF33","#33FFFF"))+
+  theme_solarized(light = TRUE)+labs(title = "Solar Count Distribution",x="")
+# State wise data
+ggplot()+geom_bar(aes(solar.data[,2]),fill=c(3:9))+theme_solarized(light = TRUE)+
+  labs(title = "State wise Distribution",x="State Name")
+# Voting 2012
+ggplot()+geom_bar(aes(solar.data$voting_2012_dem_win),fill=c("#CCFF33","#33FFFF"))+
+  theme_solarized(light = TRUE)+labs(title = "2012 Voting Data Distribution",x="")
+# Voting 2016
+ggplot()+geom_bar(aes(solar.data.selcted$voting_2016_dem_win),fill=c("#CCFF33","#33FFFF"))+
+  theme_solarized(light = TRUE)+labs(title = "2016 Voting Data Distribution",x="")
+
+library(mlbench)
+
+# fitting logistic regression on the data set
+fit.glm <-glm(solar_system_count ~ . ,data = solar.data ,family = 'binomial')
+
+# to get summary of the model
+summary(fit.glm)
+
+#stepAIC
+BIC(fit.glm)
+
+
+library("MASS")
+#(1) To get significant variables using stepAIC
+fit.solar <-stepAIC(fit.glm,direction = "both",k=log(nrow(solar.data)))#Start:  AIC=12028.36 and Step:  AIC=11711.75
+fit.solar
+# Best fit model given by stepAIC 
+solar_system_count ~ state + population_density + unemployed + 
+  education_less_than_high_school_rate + race_white_rate + 
+  race_black_africa_rate + employ_rate + poverty_family_below_poverty_level_rate + 
+  heating_fuel_coal_coke_rate + heating_fuel_none_rate + household_count + 
+  average_household_size + housing_unit_count + housing_unit_median_value + 
+  elevation + earth_temperature_amplitude + air_temperature + 
+  daily_solar_radiation + atmospheric_pressure + heating_degree_days + 
+  cooling_degree_days + occupation_public_rate + occupation_manufacturing_rate + 
+  occupation_agriculture_rate + occupancy_vacant_rate + voting_2016_dem_percentage + 
+  voting_2016_gop_percentage + voting_2016_dem_win + voting_2012_dem_win + 
+  diversity + race_indian_alaska_rate
+
+
+# Selecting the imporant columns from the orignal solar data set
+solar.data.selcted <- solar.data[,c("solar_system_count","state","population_density","unemployed",
+"education_less_than_high_school_rate","race_white_rate","race_black_africa_rate",
+"employ_rate","poverty_family_below_poverty_level_rate","heating_fuel_coal_coke_rate",
+"heating_fuel_none_rate","household_count","average_household_size","housing_unit_count",
+"housing_unit_median_value","elevation","earth_temperature_amplitude","air_temperature",
+"daily_solar_radiation","atmospheric_pressure","heating_degree_days",
+"cooling_degree_days","occupation_public_rate","occupation_manufacturing_rate",
+"occupation_agriculture_rate","occupancy_vacant_rate","voting_2016_dem_percentage",
+"voting_2016_gop_percentage","voting_2016_dem_win","voting_2012_dem_win","diversity",
+"race_indian_alaska_rate")]
+str(solar.data.selcted)
+
+str(solar.data.selcted) # 20736 obs. of  32 variables
+library(caret)
+
+#(2) To get significant variables
+select.var <- summary(fit.glm)$coeff[-1,4] < 0.05 
+
+relevant.var <- names(select.var)[select.var == TRUE] # we got 31 significant variables + 1 resposne variable
+relevant.var
+# Note: 1 State variable is divided into 6 variables ,and hence will be considered as actually 1
+
+#Now we will fit glm model again on the selected variables to validate that the above selected variables are significant.
+#Fitting GLM again on selected variables
+fit.glm1 <- glm(solar_system_count ~ . ,data = solar.data.selcted ,family = 'binomial')
+
+#(1) To get significant variables
+library(caret)
+library(lattice)
+varImp(fit.glm1) # We are getting 32 important variables ,similar from stepAIC 
+# Note: 1 State variable is divided into 6 variables ,and hence will be considered as actually 1
+
+#(2) To find correlation between variables
+library(corrplot)
+correlation.matrix<-cor(solar.data.selcted[,-c(1,2)]) # removing non-numeric column solar count and states
+corrplot(correlation.matrix, method="circle")
+
+findCorrelation(correlation.matrix, cutoff = 0.9) # highly correlated columns
+# Column names of correlated variables
+colnames(solar.data.selcted[,c(25,19,16,18,10)])
+
+#(3) now we can again check for significant coefficients 
+summary(fit.glm1)$coeff[-1,4] < 0.05  # all varaibles are significant
+
+# EDA : Data Profiling 
+library(DataExplorer)
+# To get the Structure of selected variables:
+plot_str(solar.data.selcted)
+plot_missing(solar.data)
+plot_bar(solar.data)
+plot_intro(solar.data.selcted)
+plot.design(solar.data.selcted)
+
+# to remove #################
+create_report(solar.data.selcted) # to get all in 1 report
+
+# To set seed to get same result
+set.seed(18200277)
+
+solar.data.selcted$solar_system_count <- factor(solar.data$solar_system_count,levels = c('high','low'),labels = c(1,0))
+
+
+# Creating sample sizes for each data set
+train_samp      <- floor(nrow(solar.data.selcted) * 0.50)  # 70% training data
+val_samp        <- floor(nrow(solar.data.selcted) * 0.25)  # 15% validation data
+test_samp       <- floor(nrow(solar.data.selcted) * 0.25)  # 15% validation data
+
+# Randomply sampling the data
+train_dat       <- sort(sample(seq_len(nrow(solar.data.selcted)), size=train_samp))
+train_dat_other <- setdiff(seq_len(nrow(solar.data.selcted)), train_dat)
+train_val       <- sort(sample(train_dat_other, size=val_samp))
+test_val        <- setdiff(train_dat_other, train_val)
+
+# Data set for training, validation and test
+solar.train   <- solar.data.selcted[train_dat, ]
+solar.val     <- solar.data.selcted[train_val, ]
+solar.test    <- solar.data.selcted[test_val, ]
+
+# Getting structure of the split
+str(solar.train) # 10368 obs. of  32 variables
+str(solar.val) # 5184 obs. of  32 variables
+str(solar.test)  # 5184 obs. of  32 variables
+
+#####################  Random Forest  ##############################################
+library(randomForest)
+solar.rf <- randomForest(solar_system_count ~ .,data = solar.train,importance=TRUE)
+summary(solar.rf)
+
+# Variable Importamce plot  
+importance(solar.rf)        
+varImpPlot(solar.rf,type =1)
+
+# Asses performance on the validation data of random forest
+pred.rf <- predict(solar.rf,type = 'class',newdata = solar.val)
+tab.rf <- table(Solar_Count=solar.val$solar_system_count,pred.rf)
+
+# cross tabulation between observed and predicted
+tab.rf
+
+# Plotting the error rates for randomForest
+plot(solar.rf,log="y",main="Random Forest",type="l")
+
+# Accuracy : 0.90 is accuracy when test data is used to fit model and tested on validation data set
+sum(diag(tab.rf) )/(sum(tab.rf)) # 0.896
+
+# Incorrect classification
+1-sum(diag(tab.rf))/sum(tab.rf)  # 0.10
+
+# ROC curve
+predObj.rf <- prediction(predict(solar.rf, type = "prob")[, 2], solar.train$solar_system_count)
+perf.rf <-performance(predObj.rf,"tpr","fpr")
+plot(perf.rf,main="ROC Plot") # ROC plot
+abline(0,1,col ="darkorange2",lty =2)
+# accuracy across cutoffs
+plot(performance(predObj.rf, "acc"))
+
+auc <- performance(predObj.rf, "auc")
+auc@y.values #0.96 is AUC
+
+require(pROC)
+rf.roc<-roc(solar.train$solar_system_count,solar.rf$votes[,2])
+plot(rf.roc)
+auc(rf.roc)
+
+######################### Classification trees  #########################
+library(rpart)
+library(partykit)
+
+ct <- rpart(solar_system_count~ .,data= solar.train)
+plot(as.party(ct),cex=0.5)
+summary(ct)
+
+#prediction
+phat <- predict(ct)
+head(phat)
+#predicted class
+pred.class <- predict(ct,type='class',solar.val)
+head(pred.class)
+#classification table
+tab.ct <-table(Solar_Count=solar.val$solar_system_count,pred.class)
+tab.ct
+# Accuracy
+sum(diag(tab.ct))/sum(tab.ct) # 0.834 classification rate
+
+#Controlling tree size (more complex tree )
+ct2  <- rpart(solar_system_count ~ .,solar.data,cp=0.01/2,minsplit=2)
+plot(as.party(ct2),cex=0.2)
+
+
+# ROC curev
+predObj.ct <- prediction(predict(ct, type = "prob")[, 2], solar.train$solar_system_count)
+perf.ct <-performance(predObj,"tpr","fpr")
+plot(perf.ct,main="ROC Plot") # ROC plot
+abline(0,1,col ="darkorange2",lty =2)
+# accuracy across cutoffs
+plot(performance(predObj.ct, "acc"))
+
+auc <- performance(predObj.ct, "auc")
+auc@y.values #0.90 is AUC 
+
+
+############### Logistic Regression Model ##################################################
+library(bestglm)
+#solar.data.selcted$solar_system_count <- factor(solar.data$solar_system_count,levels = c('high','low'),labels = c(1,0))
+
+solar.lm <- glm(solar_system_count ~ .,data = solar.train,family = 'binomial')
+summary(solar.lm)
+
+# For accuracy on validation data set
+pred.solar <- predict(solar.lm,type = 'response', newdata = solar.val)
+pred.solar <-ifelse(pred.solar>0.5,1,0)# cross tabulation between observed and predicted
+# Asses performance on the validation dataset
+tab.solar <- table(solar.val$solar_system_count, pred.solar)
+tab.solar
+
+# cross tabulation between observed and predicted
+acc.solar <- sum(diag(tab.solar))/sum(tab.solar)
+acc.solar # 0.88 is accuracy on validation data set
+
+# To get Residual Vs Fitted value plot, Normal QQ plot, Scale-Location plot, Residual vs Leverage
+plot(solar.lm)
+
+# To fit to compute analysis of variance
+solar.anova<- anova(solar.lm,fit.bag,test = 'Chisq')
+solar.anova[-1,5]<0.05
+
+#extract coefficient of model
+w <- coef(solar.lm)
+w[w>0] # coefficients that are significant i.e. more than zero
+
+
+# computing the odds and confidence limits for odds
+lg <-predict(solar.lm)
+phat <-predict(solar.lm,type ="response")
+# plotting Log-Odds Vs Estimated Probabilities
+symb <-c(19,17)
+col <-c("darkorange2","deepskyblue3")# correspond to class 0 and 1 respectively
+plot(lg,jitter(phat,amount =0.1),xlab ="Log-odds",ylab ="Fitted probabilities",pch
+     =symb[solar.data$solar_system_count],col =adjustcolor(col[solar.data$solar_system_count],0.7)
+     ,cex =0.7)
+
+# ROC
+library(ROCR)
+predObj <- prediction(fitted(solar.lm), solar.train$solar_system_count)
+perf <-performance(predObj,"tpr","fpr")
+plot(perf,main="ROC Plot") # ROC plot
+abline(0,1,col ="darkorange2",lty =2)
+auc <- performance(predObj, "auc")
+auc@y.values #0.954 is AUC
+
+#Performance
+sens <-performance(predObj,"sens")
+spec <-performance(predObj,"spec")
+tau <-sens@x.values[[1]]
+
+sensSpec <-sens@y.values[[1]]+spec@y.values[[1]]
+best <-which.max(sensSpec)
+# Tau plot
+plot(tau, sensSpec,type ="l")
+points(tau[best], sensSpec[best],col =adjustcolor("red4",0.5),pch =15)
+tau[best] # best value of tau is 0.44
+# classification for optimal tau
+pred <-ifelse(fitted(solar.lm)>tau[best],"1","0")
+# cross tabulation between observed and predicted
+t <- table(Solar_Count=solar.train$solar_system_count,Prediction= pred)
+#cross tabulation accuracy
+sum(diag(t))/sum(colSums(t)) # 0.89 is accuracy for model
+#Incorrect classification
+1-sum(diag(t))/sum(t) # 0.10
+
+#confusion matrix
+library(caret)
+confusionMatrix(solar.val$solar_system_count,predObj)
+
+library(pROC)
+pred.sola <- predict(solar.lm,newdata = solar.val)
+pred.sola <-ifelse(as.numeric(pred.sola)>0.5,1,0)
+length(solar.val)
+
+roc(solar.val$solar_system_count,pred.sola)
+plot(roc(solar.val$solar_system_count,pred.sola))
+
+############# SVM ########################################
+library(nnet)
+library(kernlab)
+fitSvm <-ksvm(solar_system_count~.,data =solar.train)
+summary(fitSvm)
+
+pred.svm <- predict(fitSvm,newdata = solar.val)
+tab.svm <- table(Solar_Count=solar.val$solar_system_count,pred.svm)
+# Cross tabulation
+tab.svm
+
+# Accuracy : 0.896 is accuracy when test data is used to fit model and tested on validation data set
+sum(diag(tab.svm) )/(sum(tab.svm)) 
+# Incorrect classification
+1-sum(diag(tab.rf.selected))/sum(tab.rf.selected)  # 0.09
+
+# ROC curve ###issue
+predObj.svm <- prediction(fitSvm, solar.train$solar_system_count)
+perf.svm <-performance(predObj.svm,"tpr","fpr")
+plot(perf.svm) # ROC plot
+abline(0,1,col ="darkorange2",lty =2)
+# accuracy across cutoffs
+plot(performance(predObj.svm, "acc"))
+
+auc <- performance(predObj.svm, "auc")
+auc@y.values #0.96 is AUC
+
+library(pROC)
+pred.svm <- predict(fitSvm,newdata = solar.val)
+pred.svm <-ifelse(as.numeric(pred.svm)>0.5,0,1)
+length(solar.val)
+
+roc(solar.val$solar_system_count,pred.svm)
+plot(roc(solar.val$solar_system_count,pred.svm))
+
+
+########### Bagging ####################
+
+library(adabag)
+fit.bag <-bagging(solar_system_count ~ .,data =solar.train)
+
+summary(fit.bag)
+# assess performance on validation data
+predTestBag <-predict(fit.bag,type='class',newdata =solar.val)
+
+# extract confusion matrix and classification error
+bag.tab <- predTestBag$confusion
+bag.tab
+# Accuracy
+sum(diag(bag.tab))/sum(bag.tab) # 0.866
+1- predTestBag$error
+
+## compute training classification error as function of number of trees
+eBagTrain <-errorevol(fit.bag, solar.train)$error
+
+# compute test classification error as function of number of trees
+eBagTest <-errorevol(fit.bag, solar.val)$error
+
+
+# ROC curve issue
+predObj.bag <- prediction(fit.bag, solar.train$solar_system_count)
+perf.svm <-performance(predObj.svm,"tpr","fpr")
+plot(perf.svm) # ROC plot
+abline(0,1,col ="darkorange2",lty =2)
+# accuracy across cutoffs
+plot(performance(predObj.svm, "acc"))
+
+auc <- performance(predObj.svm, "auc")
+auc@y.values #0.96 is AUC
+
+
+#############  Boosting ###########
+fit.boost <-boosting(solar_system_count ~ .,data =solar.train)
+
+# assess performance on validation data
+predBoost <-predict(fit.boost,type='class',newdata =solar.val)
+
+# extract confusion matrix and classification error
+boost.tab <- predBoost$confusion
+boost.tab
+# Accuracy
+sum(diag(boost.tab))/sum(boost.tab)
+
+## compute training classification error as function of number of trees
+eBoostTrain <-errorevol(fit.boost, solar.train)$error
+# compute test classification error as function of number of trees
+eBoostTest <-errorevol(fit.boost, solar.val)$error
+
+
+library(pROC)
+pred.boost <- predict(fit.boost,newdata = solar.val)
+pred.boost <- ifelse(pred.boost$class>0.5,1,0)
+
+boost.roc <- roc(solar.val$solar_system_count,pred.boost)
+plot(boost.roc)
+
+str(solar.data)
+########################## K Fold Validation ###########################
+
+K <-5   # To set K-fold
+R <-100 # number of replicates
+
+# to store the accuracy of each classifier in the K fold
+out <-matrix(NA, R,8)
+colnames(out) <-c("RandomF","ClassificationTree","Logistic","SVM","Bagging","Boosting","Best_Model","Test_Accuracy")
+out <-as.data.frame(out) 
+N <-nrow(solar.data.selcted)
+
+# Dividing data set:
+train <-sample(1:N,size =0.75*N)
+test <-sample(setdiff(1:N, train),size =0.25*N )
+
+# Data set for training and test
+solar.train   <- solar.data.selcted[train, ] 
+# train set will be further divided into train & validation set during k fold
+solar.test    <- solar.data.selcted[test, ]
+
+# T
+for( r in 1:R ) {
+  # for( r in 1:R){
+  # split the data into training, validation and test sets
+  N <-nrow(solar.train)
+  # acc <- matrix(NA, K, 4) # accuracy of the two classifiers in the K folds
+  folds <- rep( 1:K, ceiling(N/K) )
+  folds <- sample(folds) # random permute
+  folds <- folds[1:N] # ensure we got N data points
+  #for ( k in 1:K){
+  for ( k in 1:K ) {
+    train <- which(folds != k)
+    val <- setdiff(1:N, train)
+    
+    # Fitting models on train data
+    fit1 <- randomForest(solar_system_count ~ .,data =solar.train[train,],importance=TRUE)   # Random forest
+    
+    fit2 <- rpart(solar_system_count~ .,data=solar.train[train,])  # Classification trees
+    
+    fit3 <- glm(solar_system_count ~ .,data = solar.train[train,],family = 'binomial') # logistic regression
+    
+    fit4 <-ksvm(solar_system_count~.,data =solar.train[train,])  #SVM
+    
+    fit5 <-bagging(solar_system_count ~ .,data =solar.train[train,]) # Bagging
+    
+    fit6 <-boosting(solar_system_count ~ .,data =solar.train[train,]) # Boosting
+    
+    # Fit on validation data
+    # predict the classification of the validation data observations in the dropped fold
+    pred1 <- predict(fit1, type = "class", newdata = solar.train[val,])   # Random Forest
+    tab1 <- table(solar.train$solar_system_count[val], pred1)
+    acc1 <- sum(diag(tab1))/sum(tab1)
+    # solar.data.selcted[,test]
+    pred2 <- predict(fit2, type = "class", newdata = solar.train[val,])   # Classification trees
+    tab2 <- table(solar.train$solar_system_count[val], pred2)
+    acc2 <- sum(diag(tab2))/sum(tab2)
+    
+    pred3 <- predict(fit3,type = 'response', newdata = solar.train[val,]) # Logistic Regression
+    pred3 <-ifelse(pred3>0.5,1,0)
+    tab3 <- table(solar.train$solar_system_count[val], pred3)
+    acc3 <- sum(diag(tab3))/sum(tab3)
+    
+    pred4 <- predict(fit4, newdata = solar.train[val,])                    # SVM
+    tab4 <- table(solar.train$solar_system_count[val], pred4)
+    acc4 <- sum(diag(tab4))/sum(tab4)
+    
+    pred5 <-predict(fit5,type='class',newdata =solar.train[val,])          # Bagging
+    bag.tab <- pred5$confusion
+    acc5 <- sum(diag(bag.tab))/sum(bag.tab)
+    
+    pred6 <-predict(fit6,type='class',newdata =solar.train[val,])          # Boosting
+    boost.tab <- pred6$confusion
+    acc6 <- sum(diag(boost.tab))/sum(boost.tab)
+    
+    #compute accuracy
+    acc <-c(random_forest =acc1,class_tree =acc2,logistic =acc3,svm =acc4,bagg=acc5,boost=acc6)
+    out[r,1] <-acc1
+    out[r,2] <-acc2
+    out[r,3] <-acc3
+    out[r,4] <-acc4
+    out[r,5] <-acc5
+    out[r,6] <-acc6
+    
+    best <-names(which.max(acc) )
+  }
+    N <-nrow(solar.test)
+    # accuracy of the two classifiers in the K folds
+    folds <- rep( 1:K, ceiling(N/K) )
+    folds <- sample(folds) # random permute
+    folds <- folds[1:N] # ensure we got N data points
+    
+    for ( k in 1:K ) {
+      test <- which(folds != k)
+      switch(best,
+             random_forest ={
+               pred1 <- predict(fit1, type = "class", newdata = solar.test[test,]) # Random Forest
+               tab1 <- table(solar.test$solar_system_count[test], pred1)
+               accBest <- sum(diag(tab1))/sum(tab1)
+             },
+             class_tree ={
+               pred2 <- predict(fit2, type = "class", newdata = solar.test[test,]) # Classification trees
+               tab2 <- table(solar.test$solar_system_count[test], pred2)
+               accBest <- sum(diag(tab2))/sum(tab2)
+             },
+             logistic ={
+               pred3 <- predict(fit3,type = 'response', newdata = solar.test[test,]) # Logistic Regression
+               pred3 <-ifelse(pred3>0.5,1,0)
+               tab3 <- table(solar.test$solar_system_count[test], pred3)
+               accBest <- sum(diag(tab3))/sum(tab3)
+             },
+             svm ={
+               pred4 <- predict(fit4, newdata = solar.test[test,])                   # SVM
+               tab4 <- table(solar.test$solar_system_count[test], pred4)
+               accBest <- sum(diag(tab4))/sum(tab4)
+             },
+             bagg={
+               pred5 <-predict(fit5,type='class',newdata =solar.test[test,])          # Bagging
+               bag.tab <- pred5$confusion
+               accBest <- sum(diag(bag.tab))/sum(bag.tab)
+             },
+             boost={
+               pred6 <-predict(fit6,type='class',newdata =solar.test[test,])          # Boosting
+               boost.tab <- pred6$confusion
+               accBest <- sum(diag(boost.tab))/sum(boost.tab)
+             }
+      )
+    }
+    out[r,7] <-best
+    out[r,8] <-accBest
+    print(r)
+  }
+
+tout<- readRDS("solar_out_data.Rda")
+# To get best model
+table(out$Best_Model) # Random forest is the best model among all
+prop.table(table(out$Best_Model))
+
+# Sumaary of all models
+summary(out[1:6])
+
+# Average of all models
+avg<- t(colMeans(out[1:6]))
+
+meanAcc <-colMeans(avg)# estimated mean accuracy
+
+sdAcc <-apply(out[1:6],2, sd)/sqrt(R)# estimated mean accuracy standard deviation
+
+table(out[,7])/R
+
+#############
+out <-readRDS("ML_data.rda")
+##############
+library(ggplot2)
+library(reshape)
+library(ggthemes)
+# To create data frame with only model accuracy data with row counts
+count = c(1:100)
+tout<- data.frame(cbind(count,out[1:6]))
+
+# To alter accuracy data frame shape for plotting
+t_melt<- melt(tout,id.vars ="count")
+
+# Plotting data using GGplot
+ggplot(t_melt, aes(x=count,y=value,group=variable,colour=variable)) +geom_point()+
+  geom_line(aes(lty=variable),alpha=0.79) + geom_hline(yintercept = meanAcc,color="#666666")+
+  labs(title = "Supervised Classification Accuracy", x = "Replication", y = "Accuracy",fill="Model")+
+  theme_solarized(light = FALSE) +theme(legend.position = "bottom")
+
+# Box plot of the top 3 models
+boxplot(out$Test_Accuracy~out$Best_Model,xlab="Model",ylab="Accuracy",main="Best Model Accuracy")
+stripchart(out$Test_Accuracy~out$Best_Model,add =TRUE,vertical =TRUE,method ="jitter",pch =19,col =adjustcolor("magenta3",0.2))
+
+# Selecting records  with random forest as best model
+out[out$Best_Model=="random_forest",c(1,7,8)]
+
+# Fetching test accuracy of Random forest on the test data set
+sum(out[out$Best_Model=="random_forest",8])/80  # 0.897 is accuracy
+
+# Asses performance on the test data of random forest model directly
+library(randomForest)
+pred.rf.test <- predict(solar.rf,type = 'class',newdata = solar.test)
+tab.rf.test <- table(Solar_Count=solar.test$solar_system_count,pred.rf.test)
+str(solar.test)
+# cross tabulation between observed and predicted
+tab.rf.test
+# Accurcay
+sum(diag(tab.rf.test))/sum(tab.rf.test) # 0.909 is accuracy
+```
